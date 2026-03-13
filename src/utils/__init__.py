@@ -201,6 +201,26 @@ def init_database(db_path: Path = DATABASE_PATH):
             )
         """)
         
+        # 9. Alpha 因子表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS alpha_factors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts_code TEXT NOT NULL,
+                trade_date TEXT NOT NULL,
+                alpha_1 REAL,
+                alpha_2 REAL,
+                alpha_3 REAL,
+                alpha_4 REAL,
+                alpha_5 REAL,
+                alpha_6 REAL,
+                alpha_7 REAL,
+                alpha_8 REAL,
+                alpha_9 REAL,
+                alpha_10 REAL,
+                UNIQUE(ts_code, trade_date)
+            )
+        """)
+        
         # 创建索引以加速查询
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prices_code_date ON daily_prices(ts_code, trade_date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_factors_code_date ON factor_values(ts_code, trade_date)")

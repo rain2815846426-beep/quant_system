@@ -1,0 +1,101 @@
+name,expression
+alpha_gen_1,log(high)
+alpha_gen_2,"ts_rank(rank(rank(close)), 5)"
+alpha_gen_3,"delta(close, 3)"
+alpha_gen_4,scale(sign(return))
+alpha_gen_5,"decay_linear(abs(high), 5)"
+alpha_gen_6,"delay(scale(ts_rank(close, 5)))"
+alpha_gen_7,return
+alpha_gen_8,delay(scale(rank(return)))
+alpha_gen_9,high
+alpha_gen_10,return
+alpha_gen_11,high
+alpha_gen_12,low
+alpha_gen_13,return
+alpha_gen_14,low
+alpha_gen_15,"delta(delay(delta(volume, 3)), 5)"
+alpha_gen_16,"scale(correlation(high, log(open), 5))"
+alpha_gen_17,"delta(rank(ts_rank(open, 20)), 10)"
+alpha_gen_18,delay(open)
+alpha_gen_19,high
+alpha_gen_20,"delay(ts_rank(rank(low), 5), 3)"
+alpha_gen_21,open
+alpha_gen_22,"delta(high, 10)"
+alpha_gen_23,delay(vwap)
+alpha_gen_24,close
+alpha_gen_25,"decay_linear(return, 20)"
+alpha_gen_26,"decay_linear(decay_linear(close, 5), 10)"
+alpha_gen_27,volume
+alpha_gen_28,high
+alpha_gen_29,open
+alpha_gen_30,return
+alpha_gen_31,vwap
+alpha_gen_32,low
+alpha_gen_33,"decay_linear(decay_linear(correlation(volume, open, 20), 10), 10)"
+alpha_gen_34,high
+alpha_gen_35,close
+alpha_gen_36,volume
+alpha_gen_37,"sign(decay_linear(high, 5))"
+alpha_gen_38,high
+alpha_gen_39,return
+alpha_gen_40,"ts_rank(delay(delay(volume, 10), 3), 60)"
+alpha_gen_41,open
+alpha_gen_42,"delay(open, 10)"
+alpha_gen_43,"decay_linear(rank(ts_rank(open, 20)), 10)"
+alpha_gen_44,"delay(sign(correlation(return, volume, 5)), 3)"
+alpha_gen_45,"delay(decay_linear(abs(vwap), 20), 5)"
+alpha_gen_46,"delta(abs(low), 3)"
+alpha_gen_47,volume
+alpha_gen_48,"log(ts_rank(log(high), 20))"
+alpha_gen_49,vwap
+alpha_gen_50,scale(volume)
+alpha_gen_51,close
+alpha_gen_52,"rank(delay(decay_linear(return, 20)))"
+alpha_gen_53,"log(delta(log(high), 5))"
+alpha_gen_54,close
+alpha_gen_55,"decay_linear(high, 20)"
+alpha_gen_56,close
+alpha_gen_57,close
+alpha_gen_58,rank(low)
+alpha_gen_59,vwap
+alpha_gen_60,close
+alpha_gen_61,"scale(abs(correlation(high, volume, 20)))"
+alpha_gen_62,"decay_linear(correlation(abs(close), log(vwap), 20), 5)"
+alpha_gen_63,"log(delta(sign(open), 10))"
+alpha_gen_64,abs(abs(close))
+alpha_gen_65,"rank(correlation(scale(return), rank(high), 5))"
+alpha_gen_66,"correlation(volume, sign(abs(volume)), 20)"
+alpha_gen_67,low
+alpha_gen_68,"log(correlation(abs(high), decay_linear(return, 10), 60))"
+alpha_gen_69,"delta(ts_rank(volume, 10))"
+alpha_gen_70,vwap
+alpha_gen_71,close
+alpha_gen_72,abs(sign(rank(volume)))
+alpha_gen_73,"abs(correlation(delay(close, 5), vwap, 5))"
+alpha_gen_74,return
+alpha_gen_75,abs(log(abs(open)))
+alpha_gen_76,"scale(ts_rank(delta(open, 5), 5))"
+alpha_gen_77,vwap
+alpha_gen_78,"log(decay_linear(decay_linear(open, 10), 20))"
+alpha_gen_79,"delta(abs(decay_linear(high, 5)))"
+alpha_gen_80,delay(delta(scale(volume)))
+alpha_gen_81,"ts_rank(scale(delta(volume)), 20)"
+alpha_gen_82,"delay(ts_rank(delta(close, 3), 20), 10)"
+alpha_gen_83,high
+alpha_gen_84,volume
+alpha_gen_85,close
+alpha_gen_86,delta(abs(rank(volume)))
+alpha_gen_87,vwap
+alpha_gen_88,sign(sign(close))
+alpha_gen_89,"delay(delay(return, 10), 10)"
+alpha_gen_90,"decay_linear(sign(log(open)), 10)"
+alpha_gen_91,open
+alpha_gen_92,"decay_linear(log(delta(close, 3)), 10)"
+alpha_gen_93,rank(rank(log(return)))
+alpha_gen_94,vwap
+alpha_gen_95,close
+alpha_gen_96,volume
+alpha_gen_97,sign(close)
+alpha_gen_98,volume
+alpha_gen_99,"ts_rank(rank(abs(close)), 10)"
+alpha_gen_100,log(high)
