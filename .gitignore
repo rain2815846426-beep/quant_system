@@ -27,3 +27,4 @@ env/
 # 临时文件
 *.tmp
 *.bak
+.DS_Store
