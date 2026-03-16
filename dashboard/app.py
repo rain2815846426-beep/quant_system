@@ -209,6 +209,18 @@ elif menu == "🔄 数据更新":
 elif menu == "📈 选股推荐":
     st.header("📈 选股推荐")
     
+    # 风控提示
+    st.info("""
+    ⚠️ **重要提示**: 
+    - 以下推荐股票**未考虑风控措施**
+    - 实盘请使用**低回撤版**策略（最大回撤 -6%）
+    - 低回撤版关键风控:
+      - 动态仓位管理（30-50% 仓位）
+      - 止损机制（15% 固定 +10.5% 追踪）
+      - 个股仓位上限（5-8%）
+      - 行业中性化
+    """)
+    
     # 参数设置
     st.subheader("⚙️ 选股参数")
     
@@ -224,7 +236,10 @@ elif menu == "📈 选股推荐":
         )
     
     with col3:
-        industry_neutral = st.checkbox("行业中性化", value=False)
+        # 风控选项
+        risk_control = st.checkbox("✅ 启用风控（推荐）", value=True)
+        if risk_control:
+            st.caption("风控：仓位 30-50%, 止损 15%, 个股<8%")
     
     if st.button("🔍 生成选股推荐", type="primary"):
         with st.spinner("正在计算选股推荐..."):
@@ -397,7 +412,11 @@ elif menu == "⚙️ 参数分析":
     # 回测结果
     st.subheader("📈 回测结果")
     
-    backtest_path = project_root / "research_results" / "stock_selection" / "performance_report.md"
+    # 优先显示低回撤版报告
+    backtest_path = project_root / "research_results" / "stock_selection" / "low_drawdown_performance_report.md"
+    
+    if not backtest_path.exists():
+        backtest_path = project_root / "research_results" / "stock_selection" / "performance_report.md"
     
     if backtest_path.exists():
         with open(backtest_path, 'r') as f:
