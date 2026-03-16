@@ -135,13 +135,17 @@ class FeatureEngineer:
         
         data = data.copy()
         
+        # 确保索引正确
+        if 'ts_code' in data.columns:
+            data = data.reset_index(drop=True)
+        
         # 按股票分组计算未来收益
         def calc_future_return(group):
-            group = group.sort_values('trade_date')
+            group = group.sort_values('trade_date').copy()
             group[f'target_{self.target_period}'] = group['close'].shift(-self.target_period) / group['close'] - 1
             return group
         
-        data = data.groupby('ts_code').apply(calc_future_return)
+        data = data.groupby('ts_code', group_keys=False).apply(calc_future_return)
         
         # 删除最后 self.target_period 行（无法计算目标）
         data = data.dropna(subset=[f'target_{self.target_period}'])
@@ -214,19 +218,23 @@ class FeatureEngineer:
         
         data = data.copy()
         
+        # 确保索引正确
+        if 'ts_code' in data.columns:
+            data = data.reset_index(drop=True)
+        
         # 对价格和成交量创建滚动特征
         for window in windows:
             # 滚动均值
-            data[f'close_ma{window}'] = data.groupby('ts_code')['close'].transform(
+            data[f'close_ma{window}'] = data.groupby('ts_code', group_keys=False)['close'].transform(
                 lambda x: x.rolling(window, min_periods=1).mean()
             )
             
             # 滚动标准差
-            data[f'close_std{window}'] = data.groupby('ts_code')['close'].transform(
+            data[f'close_std{window}'] = data.groupby('ts_code', group_keys=False)['close'].transform(
                 lambda x: x.rolling(window, min_periods=1).std()
             )
             
-            data[f'volume_ma{window}'] = data.groupby('ts_code')['volume'].transform(
+            data[f'volume_ma{window}'] = data.groupby('ts_code', group_keys=False)['volume'].transform(
                 lambda x: x.rolling(window, min_periods=1).mean()
             )
         
