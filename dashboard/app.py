@@ -63,7 +63,7 @@ st.sidebar.markdown("---")
 # 主功能选择
 menu = st.sidebar.radio(
     "选择功能",
-    ["📊 系统概览", "🔄 数据更新", "📈 选股推荐", "🤖 模型预测", "⚙️ 参数分析", "📁 数据查询"]
+    ["📊 系统概览", "🔄 数据更新", "📈 选股推荐", "🤖 模型预测", "⚙️ 参数分析", "📁 数据查询", "📰 消息情绪"]
 )
 
 st.sidebar.markdown("---")
@@ -517,6 +517,137 @@ elif menu == "📁 数据查询":
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("暂无行业数据")
+
+# ==================== 消息情绪 ====================
+elif menu == "📰 消息情绪":
+    st.header("📰 消息面/情绪面分析")
+    
+    st.markdown("""
+    **功能说明**:
+    - 抓取最新财经新闻
+    - 计算情绪指数
+    - 识别热门主题
+    - 生成 News 因子
+    """)
+    
+    # 获取最新情绪数据
+    with get_db_connection(DATABASE_PATH) as conn:
+        cursor = conn.cursor()
+        
+        # 获取最新 News 因子
+        cursor.execute("""
+            SELECT trade_date, sentiment_factor, news_count_factor, event_score,
+                   market_sentiment_index, market_positive_ratio
+            FROM news_factors
+            ORDER BY trade_date DESC
+            LIMIT 1
+        """)
+        latest = cursor.fetchone()
+    
+    # 显示情绪指标
+    if latest:
+        st.success(f"✅ 最新数据：{latest[0]}")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            sentiment_idx = latest[4] if latest[4] else 50
+            st.metric("情绪指数", f"{sentiment_idx:.1f}", 
+                     "正面" if sentiment_idx > 50 else "负面" if sentiment_idx < 50 else "中性")
+        
+        with col2:
+            sentiment_factor = latest[1] if latest[1] else 0
+            st.metric("sentiment_factor", f"{sentiment_factor:.4f}")
+        
+        with col3:
+            news_count = latest[2] if latest[2] else 0
+            st.metric("news_count_factor", f"{news_count:.4f}")
+        
+        with col4:
+            event_score = latest[3] if latest[3] else 0
+            st.metric("event_score", f"{event_score:.4f}")
+        
+        # 情绪图表
+        st.subheader("📊 情绪指数历史")
+        
+        cursor.execute("""
+            SELECT trade_date, market_sentiment_index
+            FROM news_factors
+            ORDER BY trade_date DESC
+            LIMIT 30
+        """)
+        history = cursor.fetchall()
+        
+        if history:
+            hist_df = pd.DataFrame(history, columns=['日期', '情绪指数'])
+            
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=hist_df['日期'],
+                y=hist_df['情绪指数'],
+                mode='lines+markers',
+                name='情绪指数'
+            ))
+            fig.add_hline(y=50, line_dash="dash", line_color="gray")
+            fig.update_layout(title="市场情绪指数（>50 正面，<50 负面）")
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("⚠️ 暂无情绪数据，请先更新")
+        
+        if st.button("🔄 更新情绪数据", type="primary"):
+            st.info("请在终端运行：`python3 scripts/update_news_factors.py`")
+    
+    # 主题热度
+    st.subheader("🔥 主题热度")
+    
+    with get_db_connection(DATABASE_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT trade_date, topic_ai, topic_new_energy, topic_semiconductor
+            FROM news_factors
+            ORDER BY trade_date DESC
+            LIMIT 1
+        """)
+        topics = cursor.fetchone()
+    
+    if topics:
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            ai_score = topics[1] if topics[1] else 0
+            st.metric("人工智能", f"{ai_score:.4f}")
+        
+        with col2:
+            ne_score = topics[2] if topics[2] else 0
+            st.metric("新能源", f"{ne_score:.4f}")
+        
+        with col3:
+            sc_score = topics[3] if topics[3] else 0
+            st.metric("半导体", f"{sc_score:.4f}")
+    else:
+        st.info("暂无主题数据")
+    
+    # 使用说明
+    st.markdown("---")
+    st.subheader("📖 使用说明")
+    
+    st.markdown("""
+    **更新情绪数据**:
+    ```bash
+    python3 scripts/update_news_factors.py
+    ```
+    
+    **因子说明**:
+    - `sentiment_factor`: 情绪得分（-1 到 1，正数为正面）
+    - `news_count_factor`: 新闻数量（0 到 1，越大越活跃）
+    - `event_score`: 重大事件得分（0 到 1，越大事件越重要）
+    - `market_sentiment_index`: 市场情绪指数（0-100，>50 为正面）
+    
+    **使用场景**:
+    - 情绪指数 > 60：市场乐观，可适当加仓
+    - 情绪指数 < 40：市场悲观，注意风险
+    - event_score > 0.5：有重大事件，关注相关股票
+    """)
 
 # 页脚
 st.markdown("---")
