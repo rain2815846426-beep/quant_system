@@ -163,17 +163,17 @@ elif menu == "🔄 数据更新":
     **更新说明**:
     1. 更新日线数据（获取最新行情）
     2. 计算新因子
-    3. 更新行业数据
+    3. 更新情绪数据
     
     **预计时间**: 10-30 分钟
     """)
     
     # 更新选项
-    st.subheader("更新选项")
+    st.subheader("⚙️ 更新选项")
     
     update_daily = st.checkbox("✅ 更新日线数据", value=True)
     update_factors = st.checkbox("✅ 计算因子", value=True)
-    update_industry = st.checkbox("⚠️ 更新行业数据（较慢）", value=False)
+    update_news = st.checkbox("✅ 更新情绪数据", value=True)
     
     if st.button("🚀 开始更新", type="primary"):
         st.info("更新任务已启动，请在终端查看进度...")
@@ -182,11 +182,21 @@ elif menu == "🔄 数据更新":
         status_text = st.empty()
         
         # 模拟进度（实际应该调用后台任务）
-        for i in range(100):
-            # 这里应该调用实际的更新脚本
-            # subprocess.run(["python3", "scripts/update_daily.py"])
-            progress_bar.progress(i + 1)
-            status_text.text(f"更新中... {i+1}%")
+        step = 0
+        if update_news:
+            step += 1
+            status_text.text(f"更新情绪数据... ({step}/3)")
+            progress_bar.progress(33)
+        
+        if update_factors:
+            step += 1
+            status_text.text(f"计算因子... ({step}/3)")
+            progress_bar.progress(66)
+        
+        if update_daily:
+            step += 1
+            status_text.text(f"更新日线... ({step}/3)")
+            progress_bar.progress(100)
         
         st.success("✅ 更新完成！")
         st.balloons()
@@ -194,14 +204,14 @@ elif menu == "🔄 数据更新":
         st.markdown("""
         **更新命令**（在终端运行）:
         ```bash
+        # 更新情绪数据
+        python3 scripts/update_news_factors.py
+        
         # 更新日线数据
         python3 scripts/update_daily.py
         
         # 计算因子
         python3 scripts/calculate_factors.py
-        
-        # 更新行业数据
-        python3 scripts/download_real_industry.py
         ```
         """)
 
@@ -524,10 +534,13 @@ elif menu == "📰 消息情绪":
     
     st.markdown("""
     **功能说明**:
-    - 抓取最新财经新闻
+    - 抓取最新财经新闻（东方财富 + 新浪 + 财联社）
     - 计算情绪指数
     - 识别热门主题
+    - 检测重大事件
     - 生成 News 因子
+    
+    **数据保留**: 最近 7 天（自动清理）
     """)
     
     # 获取最新情绪数据
@@ -537,7 +550,8 @@ elif menu == "📰 消息情绪":
         # 获取最新 News 因子
         cursor.execute("""
             SELECT trade_date, sentiment_factor, news_count_factor, event_score,
-                   market_sentiment_index, market_positive_ratio
+                   market_sentiment_index, market_positive_ratio,
+                   news_count, positive_count, negative_count
             FROM news_factors
             ORDER BY trade_date DESC
             LIMIT 1
@@ -548,24 +562,38 @@ elif menu == "📰 消息情绪":
     if latest:
         st.success(f"✅ 最新数据：{latest[0]}")
         
-        col1, col2, col3, col4 = st.columns(4)
+        # 第一行：情绪指数
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             sentiment_idx = latest[4] if latest[4] else 50
-            st.metric("情绪指数", f"{sentiment_idx:.1f}", 
-                     "正面" if sentiment_idx > 50 else "负面" if sentiment_idx < 50 else "中性")
+            delta_text = "正面" if sentiment_idx > 50 else "负面" if sentiment_idx < 50 else "中性"
+            delta_color = "normal" if sentiment_idx > 50 else "inverse" if sentiment_idx < 50 else "off"
+            st.metric("情绪指数", f"{sentiment_idx:.1f}", delta=delta_text, delta_color=delta_color)
         
         with col2:
-            sentiment_factor = latest[1] if latest[1] else 0
-            st.metric("sentiment_factor", f"{sentiment_factor:.4f}")
+            news_count = latest[6] if latest[6] else 0
+            st.metric("新闻数量", f"{news_count} 条")
         
         with col3:
-            news_count = latest[2] if latest[2] else 0
-            st.metric("news_count_factor", f"{news_count:.4f}")
+            event_count = latest[3] * 10 if latest[3] else 0
+            st.metric("重大事件", f"{int(event_count)} 条")
         
-        with col4:
-            event_score = latest[3] if latest[3] else 0
-            st.metric("event_score", f"{event_score:.4f}")
+        # 第二行：因子值
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            sentiment_factor = latest[1] if latest[1] else 0
+            st.metric("sentiment_factor", f"{sentiment_factor:.4f}",
+                     "正面" if sentiment_factor > 0 else "负面" if sentiment_factor < 0 else "中性")
+        
+        with col2:
+            news_count_factor = latest[2] if latest[2] else 0
+            st.metric("news_count_factor", f"{news_count_factor:.4f}")
+        
+        with col3:
+            positive_ratio = latest[5] if latest[5] else 0
+            st.metric("正面比例", f"{positive_ratio*100:.1f}%")
         
         # 情绪图表
         st.subheader("📊 情绪指数历史")
@@ -586,53 +614,97 @@ elif menu == "📰 消息情绪":
                 x=hist_df['日期'],
                 y=hist_df['情绪指数'],
                 mode='lines+markers',
-                name='情绪指数'
+                name='情绪指数',
+                line=dict(color='red', width=2)
             ))
-            fig.add_hline(y=50, line_dash="dash", line_color="gray")
-            fig.update_layout(title="市场情绪指数（>50 正面，<50 负面）")
+            fig.add_hline(y=50, line_dash="dash", line_color="gray", annotation_text="中性线")
+            fig.add_hline(y=60, line_dash="dash", line_color="green", annotation_text="乐观线")
+            fig.add_hline(y=40, line_dash="dash", line_color="red", annotation_text="悲观线")
+            fig.update_layout(
+                title="市场情绪指数（>50 正面，<50 负面，>60 乐观，<40 悲观）",
+                xaxis_title="日期",
+                yaxis_title="情绪指数",
+                height=400
+            )
             st.plotly_chart(fig, use_container_width=True)
+        
+        # 主题热度
+        st.subheader("🔥 主题热度")
+        
+        cursor.execute("""
+            SELECT trade_date, topic_ai, topic_new_energy, topic_semiconductor,
+                   topic_medical, topic_finance, topic_consumer
+            FROM news_factors
+            ORDER BY trade_date DESC
+            LIMIT 1
+        """)
+        topics = cursor.fetchone()
+        
+        if topics:
+            topic_names = ['人工智能', '新能源', '半导体', '医药', '金融', '消费']
+            topic_values = [topics[i] if topics[i] else 0 for i in range(1, 7)]
+            
+            topic_df = pd.DataFrame({
+                '主题': topic_names,
+                '热度': topic_values
+            }).sort_values('热度', ascending=False)
+            
+            fig = px.bar(topic_df, x='热度', y='主题', orientation='h',
+                        title='主题热度排行',
+                        color='热度',
+                        color_continuous_scale='Reds')
+            fig.update_layout(height=300)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # 最新新闻明细
+        st.subheader("📰 最新新闻")
+        
+        cursor.execute("""
+            SELECT title, source, publish_time, sentiment_label, sentiment_score, event_type
+            FROM news_details
+            ORDER BY publish_time DESC
+            LIMIT 20
+        """)
+        news_list = cursor.fetchall()
+        
+        if news_list:
+            news_df = pd.DataFrame(news_list, 
+                                  columns=['标题', '来源', '时间', '情绪', '得分', '事件'])
+            
+            # 情绪标签颜色
+            def sentiment_color(label):
+                if label == 'positive':
+                    return '🟢'
+                elif label == 'negative':
+                    return '🔴'
+                else:
+                    return '⚪'
+            
+            news_df['情绪'] = news_df['情绪'].apply(sentiment_color)
+            
+            st.dataframe(news_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("暂无新闻明细，请先更新")
+            
+            if st.button("🔄 更新情绪数据", type="primary"):
+                st.info("请在终端运行：`python3 scripts/update_news_factors.py`")
     else:
         st.info("⚠️ 暂无情绪数据，请先更新")
         
         if st.button("🔄 更新情绪数据", type="primary"):
             st.info("请在终端运行：`python3 scripts/update_news_factors.py`")
     
-    # 主题热度
-    st.subheader("🔥 主题热度")
-    
-    with get_db_connection(DATABASE_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT trade_date, topic_ai, topic_new_energy, topic_semiconductor
-            FROM news_factors
-            ORDER BY trade_date DESC
-            LIMIT 1
-        """)
-        topics = cursor.fetchone()
-    
-    if topics:
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            ai_score = topics[1] if topics[1] else 0
-            st.metric("人工智能", f"{ai_score:.4f}")
-        
-        with col2:
-            ne_score = topics[2] if topics[2] else 0
-            st.metric("新能源", f"{ne_score:.4f}")
-        
-        with col3:
-            sc_score = topics[3] if topics[3] else 0
-            st.metric("半导体", f"{sc_score:.4f}")
-    else:
-        st.info("暂无主题数据")
-    
     # 使用说明
     st.markdown("---")
     st.subheader("📖 使用说明")
     
     st.markdown("""
-    **更新情绪数据**:
+    **一键更新**（推荐）:
+    1. 点击侧边栏 "🔄 数据更新"
+    2. 勾选 "✅ 更新情绪数据"
+    3. 点击 "🚀 开始更新"
+    
+    **或命令行更新**:
     ```bash
     python3 scripts/update_news_factors.py
     ```
@@ -644,9 +716,14 @@ elif menu == "📰 消息情绪":
     - `market_sentiment_index`: 市场情绪指数（0-100，>50 为正面）
     
     **使用场景**:
-    - 情绪指数 > 60：市场乐观，可适当加仓
-    - 情绪指数 < 40：市场悲观，注意风险
-    - event_score > 0.5：有重大事件，关注相关股票
+    - 情绪指数 > 60：市场乐观，可适当加仓 🟢
+    - 情绪指数 40-60：中性，观望 ⚪
+    - 情绪指数 < 40：市场悲观，注意风险 🔴
+    - event_score > 0.5：有重大事件，关注相关股票 ⚠️
+    
+    **数据保留**:
+    - News 因子：永久保存
+    - 新闻明细：最近 7 天（自动清理）
     """)
 
 # 页脚
