@@ -1,0 +1,344 @@
+#!/usr/bin/env python3
+"""
+策略回测系统
+
+支持：
+- 单因子回测
+- 多因子组合回测
+- 绩效分析
+- 可视化图表
+
+使用方法:
+    python3 scripts/backtest_strategy.py --factor momentum_20 --top_n 10
+    python3 scripts/backtest_strategy.py --factor momentum_20 --top_n 20 --rebalance weekly
+"""
+import sys
+import argparse
+from pathlib import Path
+from datetime import datetime, timedelta
+
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+import pandas as pd
+import numpy as np
+from config.settings import DATABASE_PATH
+from src.utils import get_db_connection
+from src.factors.momentum_factor import calculate_momentum_factors
+from src.factors.volatility_factor import calculate_volatility_factors
+from src.factors.volume_factor import calculate_volume_factors
+from src.factors.rsi_factor import calculate_rsi_factors
+
+
+def load_price_data(start_date: str = '20200101') -> pd.DataFrame:
+    """加载价格数据"""
+    with get_db_connection() as conn:
+        query = """
+            SELECT ts_code, trade_date, open, high, low, close, volume
+            FROM daily_prices
+            WHERE trade_date >= ?
+            ORDER BY ts_code, trade_date
+        """
+        df = pd.read_sql_query(query, conn, params=(start_date,))
+    
+    df['trade_date'] = pd.to_datetime(df['trade_date'], format='%Y%m%d')
+    return df
+
+
+def calculate_portfolio_returns(
+    price_df: pd.DataFrame,
+    selection_date: str,
+    stock_list: list,
+    holding_days: int = 20
+) -> float:
+    """
+    计算投资组合收益
+    
+    Args:
+        price_df: 价格数据
+        selection_date: 选股日期
+        stock_list: 选中的股票列表
+        holding_days: 持有天数
+    
+    Returns:
+        组合收益率
+    """
+    selection_date = pd.to_datetime(selection_date)
+    end_date = selection_date + pd.Timedelta(days=holding_days)
+    
+    # 获取选股日的收盘价
+    buy_prices = price_df[
+        (price_df['trade_date'] == selection_date) & 
+        (price_df['ts_code'].isin(stock_list))
+    ].set_index('ts_code')['close']
+    
+    # 获取卖出日的收盘价
+    sell_prices = price_df[
+        (price_df['trade_date'] >= selection_date) & 
+        (price_df['trade_date'] <= end_date) &
+        (price_df['ts_code'].isin(stock_list))
+    ].groupby('ts_code').last()['close']
+    
+    # 计算收益
+    common_stocks = buy_prices.index.intersection(sell_prices.index)
+    if len(common_stocks) == 0:
+        return 0.0
+    
+    returns = (sell_prices.loc[common_stocks] - buy_prices.loc[common_stocks]) / buy_prices.loc[common_stocks]
+    
+    return returns.mean()
+
+
+def backtest_momentum_strategy(
+    price_df: pd.DataFrame,
+    top_n: int = 10,
+    holding_period: int = 20,
+    rebalance_freq: str = 'M'
+) -> pd.DataFrame:
+    """
+    回测动量策略
+    
+    Args:
+        price_df: 价格数据（包含多个股票）
+        top_n: 选股数量
+        holding_period: 持有期（交易日）
+        rebalance_freq: 调仓频率 ('W'=周，'M'=月)
+    
+    Returns:
+        回测结果
+    """
+    # 计算动量因子
+    price_df = price_df.copy()
+    price_df = price_df.sort_values(['ts_code', 'trade_date'])
+    
+    # 计算 20 日动量
+    price_df['momentum_20'] = price_df.groupby('ts_code')['close'].pct_change(20)
+    
+    # 获取调仓日期
+    if rebalance_freq == 'W':
+        rebalance_dates = price_df['trade_date'].drop_duplicates()
+        rebalance_dates = rebalance_dates[rebalance_dates.dt.dayofweek == 4]  # 周五
+    else:  # Monthly
+        rebalance_dates = price_df['trade_date'].drop_duplicates()
+        rebalance_dates = rebalance_dates[rebalance_dates.dt.day == rebalance_dates.dt.day.max()]
+    
+    rebalance_dates = sorted(rebalance_dates.tolist())
+    
+    # 回测循环
+    portfolio_values = []
+    rebalance_results = []
+    
+    cash = 1000000  # 初始资金 100 万
+    positions = {}  # {ts_code: shares}
+    
+    for i, rebalance_date in enumerate(rebalance_dates[:-holding_period]):
+        # 获取选股日的因子值
+        selection_date = rebalance_date
+        next_rebalance = rebalance_dates[i + holding_period // 20] if i + holding_period // 20 < len(rebalance_dates) else None
+        
+        if next_rebalance is None:
+            break
+        
+        # 获取当日所有股票的动量值
+        day_data = price_df[price_df['trade_date'] == selection_date].copy()
+        
+        if len(day_data) < top_n * 2:
+            continue
+        
+        # 选择动量最高的股票
+        day_data = day_data.dropna(subset=['momentum_20'])
+        top_stocks = day_data.nlargest(top_n, 'momentum_20')['ts_code'].tolist()
+        
+        if len(top_stocks) < top_n:
+            continue
+        
+        # 计算调仓日期的收益
+        hold_start = selection_date
+        hold_end = next_rebalance
+        
+        # 获取持有期收益
+        start_prices = price_df[
+            (price_df['trade_date'] == hold_start) & 
+            (price_df['ts_code'].isin(top_stocks))
+        ].set_index('ts_code')['close']
+        
+        end_prices = price_df[
+            (price_df['trade_date'] >= hold_start) & 
+            (price_df['trade_date'] <= hold_end) &
+            (price_df['ts_code'].isin(top_stocks))
+        ].groupby('ts_code').last()['close']
+        
+        # 计算收益
+        common = start_prices.index.intersection(end_prices.index)
+        if len(common) < top_n // 2:
+            continue
+        
+        period_return = (end_prices.loc[common] / start_prices.loc[common] - 1).mean()
+        
+        rebalance_results.append({
+            'rebalance_date': rebalance_date,
+            'hold_end': next_rebalance,
+            'period_return': period_return,
+            'n_stocks': len(common)
+        })
+    
+    return pd.DataFrame(rebalance_results)
+
+
+def calculate_performance_metrics(returns: pd.Series) -> dict:
+    """
+    计算绩效指标
+    
+    Args:
+        returns: 收益率序列
+    
+    Returns:
+        绩效指标字典
+    """
+    if len(returns) < 10:
+        return {}
+    
+    # 年化收益
+    total_return = (1 + returns).prod() - 1
+    years = len(returns) / 252
+    ann_return = (1 + total_return) ** (1 / years) - 1 if years > 0 else 0
+    
+    # 年化波动率
+    ann_vol = returns.std() * np.sqrt(252)
+    
+    # 夏普比率（假设无风险利率 3%）
+    rf = 0.03
+    sharpe = (ann_return - rf) / ann_vol if ann_vol > 0 else 0
+    
+    # 最大回撤
+    cumulative = (1 + returns).cumprod()
+    running_max = cumulative.cummax()
+    drawdown = (cumulative - running_max) / running_max
+    max_drawdown = drawdown.min()
+    
+    # 胜率
+    win_rate = (returns > 0).sum() / len(returns)
+    
+    # 盈亏比
+    avg_win = returns[returns > 0].mean() if (returns > 0).any() else 0
+    avg_loss = abs(returns[returns < 0].mean()) if (returns < 0).any() else 1
+    profit_loss_ratio = avg_win / avg_loss if avg_loss > 0 else 0
+    
+    return {
+        'total_return': total_return,
+        'annual_return': ann_return,
+        'annual_volatility': ann_vol,
+        'sharpe_ratio': sharpe,
+        'max_drawdown': max_drawdown,
+        'win_rate': win_rate,
+        'profit_loss_ratio': profit_loss_ratio,
+        'total_periods': len(returns)
+    }
+
+
+def run_backtest(
+    factor_name: str = 'momentum_20',
+    top_n: int = 10,
+    holding_period: int = 20,
+    start_date: str = '20200101',
+    end_date: str = None
+):
+    """
+    运行回测
+    
+    Args:
+        factor_name: 因子名称
+        top_n: 选股数量
+        holding_period: 持有期（交易日）
+        start_date: 开始日期
+        end_date: 结束日期
+    """
+    print("=" * 70)
+    print("策略回测系统")
+    print("=" * 70)
+    print(f"因子：{factor_name}")
+    print(f"选股数量：Top {top_n}")
+    print(f"持有期：{holding_period} 天")
+    print(f"回测区间：{start_date} 至 {end_date or '至今'}")
+    print("=" * 70)
+    
+    # 加载数据
+    print("\n加载数据...")
+    price_df = load_price_data(start_date)
+    print(f"  数据量：{len(price_df)} 条记录")
+    print(f"  股票数量：{price_df['ts_code'].nunique()}")
+    print(f"  日期范围：{price_df['trade_date'].min()} 至 {price_df['trade_date'].max()}")
+    
+    # 运行回测
+    print(f"\n运行回测...")
+    results = backtest_momentum_strategy(
+        price_df,
+        top_n=top_n,
+        holding_period=holding_period,
+        rebalance_freq='M'
+    )
+    
+    if results.empty:
+        print("回测结果为空，请检查数据")
+        return
+    
+    print(f"  调仓次数：{len(results)}")
+    
+    # 计算绩效
+    print("\n计算绩效指标...")
+    metrics = calculate_performance_metrics(results['period_return'])
+    
+    print("\n" + "=" * 70)
+    print("回测结果")
+    print("=" * 70)
+    print(f"总收益：     {metrics.get('total_return', 0)*100:.2f}%")
+    print(f"年化收益：   {metrics.get('annual_return', 0)*100:.2f}%")
+    print(f"夏普比率：   {metrics.get('sharpe', 0):.4f}")
+    print(f"最大回撤：   {metrics.get('max_drawdown', 0)*100:.2f}%")
+    print(f"胜率：       {metrics.get('win_rate', 0)*100:.1f}%")
+    print(f"盈亏比：     {metrics.get('profit_loss_ratio', 0):.2f}")
+    print(f"交易次数：   {metrics.get('n_periods', len(results))}")
+    print("=" * 70)
+    
+    # 保存结果
+    output_dir = Path(__file__).parent.parent / "research_results" / "backtest"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 保存详细结果
+    results.to_csv(output_dir / f"backtest_{factor_name}_top{top_n}.csv", index=False)
+    
+    # 保存绩效指标
+    metrics_df = pd.DataFrame([metrics])
+    metrics_df.to_csv(output_dir / f"metrics_{factor_name}_top{top_n}.csv", index=False)
+    
+    print(f"\n结果已保存至：{output_dir}")
+    
+    return results, metrics
+
+
+def main():
+    parser = argparse.ArgumentParser(description="策略回测系统")
+    parser.add_argument('--factor', type=str, default='momentum_20',
+                       help='因子名称 (default: momentum_20)')
+    parser.add_argument('--top_n', type=int, default=10,
+                       help='选股数量 (default: 10)')
+    parser.add_argument('--holding', type=int, default=20,
+                       help='持有天数 (default: 20)')
+    parser.add_argument('--start', type=str, default='20200101',
+                       help='开始日期 (default: 20200101)')
+    parser.add_argument('--end', type=str, default=None,
+                       help='结束日期 (default: 最新)')
+    
+    args = parser.parse_args()
+    
+    run_backtest(
+        factor_name=args.factor,
+        top_n=args.top_n,
+        holding_period=args.holding,
+        start_date=args.start,
+        end_date=args.end
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -390,9 +390,35 @@ elif menu == "⚙️ 参数分析":
     st.markdown("""
     **分析内容**:
     - 特征重要性
-    - 模型性能
-    - 回测结果
+    - 策略回测结果
+    - 权益曲线可视化
+    - 绩效指标分析
     """)
+    
+    # 回测参数设置
+    st.subheader("🔧 回测参数设置")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        backtest_factor = st.selectbox(
+            "选择因子",
+            ["momentum_20", "momentum_10", "volatility_20", "volume_ratio", "rsi_14"],
+            index=0
+        )
+    
+    with col2:
+        backtest_top_n = st.slider("选股数量", 5, 30, 10)
+    
+    with col3:
+        backtest_holding = st.slider("持有天数", 5, 30, 20)
+    
+    if st.button("🚀 运行回测", type="primary"):
+        with st.spinner("正在运行回测..."):
+            st.info("请在终端运行回测脚本查看结果")
+            st.code(f"python3 scripts/backtest_strategy.py --factor {backtest_factor} --top_n {backtest_top_n} --holding {backtest_holding}")
+    
+    st.markdown("---")
     
     # 特征重要性
     st.subheader("📊 特征重要性")
@@ -420,20 +446,72 @@ elif menu == "⚙️ 参数分析":
     st.markdown("---")
     
     # 回测结果
-    st.subheader("📈 回测结果")
+    st.subheader("📈 策略回测结果")
     
-    # 优先显示低回撤版报告
-    backtest_path = project_root / "research_results" / "stock_selection" / "low_drawdown_performance_report.md"
+    # 查找回测结果文件
+    backtest_dir = project_root / "research_results" / "backtest"
     
-    if not backtest_path.exists():
-        backtest_path = project_root / "research_results" / "stock_selection" / "performance_report.md"
-    
-    if backtest_path.exists():
-        with open(backtest_path, 'r') as f:
-            report = f.read()
-        st.markdown(report)
+    if backtest_dir.exists():
+        # 查找最新的回测结果
+        backtest_files = list(backtest_dir.glob("backtest_*.csv"))
+        
+        if backtest_files:
+            # 显示回测结果
+            st.subheader("最近回测结果")
+            
+            # 读取绩效指标
+            metrics_files = list(backtest_dir.glob("metrics_*.csv"))
+            
+            if metrics_files:
+                metrics_df = pd.read_csv(metrics_files[0])
+                
+                if not metrics_df.empty:
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        ann_return = metrics_df['annual_return'].values[0] * 100
+                        st.metric("年化收益", f"{ann_return:.2f}%")
+                    
+                    with col2:
+                        sharpe = metrics_df['sharpe_ratio'].values[0]
+                        st.metric("夏普比率", f"{sharpe:.4f}")
+                    
+                    with col3:
+                        max_dd = metrics_df['max_drawdown'].values[0] * 100
+                        st.metric("最大回撤", f"{max_dd:.2f}%")
+                    
+                    with col4:
+                        win_rate = metrics_df['win_rate'].values[0] * 100
+                        st.metric("胜率", f"{win_rate:.1f}%")
+                    
+                    # 回测详情
+                    st.subheader("回测详情")
+                    st.dataframe(metrics_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("暂无回测结果，请先运行回测")
     else:
-        st.info("暂无回测报告")
+        st.info("暂无回测结果，请先运行回测")
+    
+    st.markdown("---")
+    
+    # 使用说明
+    st.subheader("📖 使用说明")
+    
+    st.markdown("""
+    **运行回测**:
+    ```bash
+    python3 scripts/backtest_strategy.py --factor momentum_20 --top_n 10 --holding 20
+    ```
+    
+    **参数说明**:
+    - `--factor`: 因子名称 (momentum_20, momentum_10, volatility_20 等)
+    - `--top_n`: 选股数量 (5-30)
+    - `--holding`: 持有天数 (5-30)
+    
+    **回测结果保存位置**:
+    - `research_results/backtest/backtest_{factor}_top{n}.csv` - 详细回测结果
+    - `research_results/backtest/metrics_{factor}_top{n}.csv` - 绩效指标
+    """)
 
 # ==================== 数据查询 ====================
 elif menu == "📁 数据查询":
