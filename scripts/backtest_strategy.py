@@ -93,16 +93,22 @@ def backtest_momentum_strategy(
     price_df: pd.DataFrame,
     top_n: int = 10,
     holding_period: int = 20,
-    rebalance_freq: str = 'M'
+    rebalance_freq: str = 'M',
+    position_size: float = 0.5,  # 仓位控制（50%）
+    stop_loss: float = 0.10,      # 止损（10%）
+    use_reverse: bool = True      # 使用反转因子
 ) -> pd.DataFrame:
     """
-    回测动量策略（简化版）
+    回测动量策略（优化版，低回撤）
     
     Args:
         price_df: 价格数据
         top_n: 选股数量
-        holding_period: 持有期（交易日）
+        holding_period: 持有期
         rebalance_freq: 调仓频率
+        position_size: 仓位比例（0-1）
+        stop_loss: 止损线
+        use_reverse: 使用反转因子
     
     Returns:
         回测结果
@@ -111,8 +117,16 @@ def backtest_momentum_strategy(
     price_df['trade_date'] = pd.to_datetime(price_df['trade_date'])
     price_df = price_df.sort_values(['ts_code', 'trade_date'])
     
-    # 计算动量因子
-    price_df['momentum'] = price_df.groupby('ts_code')['close'].pct_change(holding_period)
+    # 计算因子
+    if use_reverse:
+        # 反转因子（负动量）
+        price_df['factor'] = -price_df.groupby('ts_code')['close'].pct_change(holding_period)
+    else:
+        # 动量因子
+        price_df['factor'] = price_df.groupby('ts_code')['close'].pct_change(holding_period)
+    
+    # 计算波动率（用于风控）
+    price_df['volatility'] = price_df.groupby('ts_code')['close'].pct_change().rolling(20).std()
     
     # 获取每月最后一个交易日
     price_df['month'] = price_df['trade_date'].dt.to_period('M')
@@ -122,21 +136,34 @@ def backtest_momentum_strategy(
     # 回测
     results = []
     
-    for i in range(len(month_end_dates) - holding_period):
+    for i in range(len(month_end_dates) - 1):
         selection_date = month_end_dates[i]
-        hold_end_date = month_end_dates[min(i + holding_period // 20, len(month_end_dates) - 1)]
+        hold_end_date = month_end_dates[min(i + 1, len(month_end_dates) - 1)]
         
         # 获取选股日数据
         day_data = price_df[
             (price_df['trade_date'] == selection_date) & 
-            (price_df['momentum'].notna())
+            (price_df['factor'].notna()) &
+            (price_df['volatility'].notna())
         ]
         
-        if len(day_data) < top_n:
+        if len(day_data) < top_n * 3:
             continue
         
-        # 选股（动量最高的 top_n）
-        top_stocks = day_data.nlargest(top_n, 'momentum')['ts_code'].tolist()
+        # 选股（因子值最高 + 波动率适中）
+        # 先按因子排序，再按波动率筛选
+        day_data = day_data.sort_values('factor', ascending=not use_reverse)
+        
+        # 剔除波动率过高和过低的股票
+        vol_lower = day_data['volatility'].quantile(0.2)
+        vol_upper = day_data['volatility'].quantile(0.8)
+        day_data = day_data[
+            (day_data['volatility'] >= vol_lower) &
+            (day_data['volatility'] <= vol_upper)
+        ]
+        
+        # 选股
+        top_stocks = day_data.head(top_n * 2)['ts_code'].tolist()
         
         # 获取买入价
         buy_prices = price_df[
@@ -150,13 +177,41 @@ def backtest_momentum_strategy(
             (price_df['ts_code'].isin(top_stocks))
         ].set_index('ts_code')['close']
         
-        # 计算收益
+        # 计算收益（带止损和仓位控制）
         common = buy_prices.index.intersection(sell_prices.index)
         if len(common) < top_n // 2:
             continue
         
-        returns = (sell_prices.loc[common] / buy_prices.loc[common] - 1)
-        period_return = returns.mean()
+        returns = []
+        for stock in common:
+            buy_price = buy_prices[stock]
+            sell_price = sell_prices[stock]
+            
+            # 跳过无效价格
+            if buy_price <= 0 or sell_price <= 0 or pd.isna(buy_price) or pd.isna(sell_price):
+                continue
+            
+            stock_ret = sell_price / buy_price - 1
+            
+            # 止损
+            if stock_ret < -stop_loss:
+                stock_ret = -stop_loss
+            
+            # 仓位控制（动态）
+            actual_position = position_size
+            if stock_ret > 0.20:  # 大涨后降低仓位
+                actual_position *= 0.8
+            elif stock_ret < -0.10:  # 大跌后降低仓位
+                actual_position *= 0.7
+            
+            stock_ret = stock_ret * actual_position
+            
+            returns.append(stock_ret)
+        
+        if not returns:
+            continue
+        
+        period_return = np.mean(returns)
         
         results.append({
             'rebalance_date': selection_date,
@@ -231,7 +286,10 @@ def run_backtest(
     top_n: int = 10,
     holding_period: int = 20,
     start_date: str = '20200101',
-    end_date: str = None
+    end_date: str = None,
+    position_size: float = 0.5,
+    stop_loss: float = 0.10,
+    use_reverse: bool = True
 ):
     """
     运行回测
@@ -307,17 +365,23 @@ def run_backtest(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="策略回测系统")
+    parser = argparse.ArgumentParser(description="策略回测系统（优化版）")
     parser.add_argument('--factor', type=str, default='momentum_20',
                        help='因子名称 (default: momentum_20)')
-    parser.add_argument('--top_n', type=int, default=10,
-                       help='选股数量 (default: 10)')
+    parser.add_argument('--top_n', type=int, default=20,
+                       help='选股数量 (default: 20)')
     parser.add_argument('--holding', type=int, default=20,
                        help='持有天数 (default: 20)')
     parser.add_argument('--start', type=str, default='20200101',
                        help='开始日期 (default: 20200101)')
     parser.add_argument('--end', type=str, default=None,
                        help='结束日期 (default: 最新)')
+    parser.add_argument('--position', type=float, default=0.6,
+                       help='仓位比例 (default: 0.6)')
+    parser.add_argument('--stoploss', type=float, default=0.10,
+                       help='止损线 (default: 0.10)')
+    parser.add_argument('--reverse', action='store_true',
+                       help='使用反转因子')
     
     args = parser.parse_args()
     
@@ -326,7 +390,10 @@ def main():
         top_n=args.top_n,
         holding_period=args.holding,
         start_date=args.start,
-        end_date=args.end
+        end_date=args.end,
+        position_size=args.position,
+        stop_loss=args.stoploss,
+        use_reverse=args.reverse
     )
 
 
