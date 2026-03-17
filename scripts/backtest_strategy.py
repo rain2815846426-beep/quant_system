@@ -365,32 +365,48 @@ def run_backtest(
 
 
 def main():
+    from config.config_manager import get_backtest_defaults
+    
+    # 获取默认配置
+    defaults = get_backtest_defaults()
+    
     parser = argparse.ArgumentParser(description="策略回测系统（优化版）")
-    parser.add_argument('--factor', type=str, default='momentum_20',
-                       help='因子名称 (default: momentum_20)')
-    parser.add_argument('--top_n', type=int, default=20,
-                       help='选股数量 (default: 20)')
-    parser.add_argument('--holding', type=int, default=20,
-                       help='持有天数 (default: 20)')
-    parser.add_argument('--start', type=str, default='20200101',
-                       help='开始日期 (default: 20200101)')
-    parser.add_argument('--end', type=str, default=None,
-                       help='结束日期 (default: 最新)')
-    parser.add_argument('--position', type=float, default=0.6,
-                       help='仓位比例 (default: 0.6)')
-    parser.add_argument('--stoploss', type=float, default=0.10,
-                       help='止损线 (default: 0.10)')
+    parser.add_argument('--factor', type=str, default=defaults['factor'],
+                       help=f'因子名称 (default: {defaults["factor"]})')
+    parser.add_argument('--top_n', type=int, default=defaults['top_n'],
+                       help=f'选股数量 (default: {defaults["top_n"]})')
+    parser.add_argument('--holding', type=int, default=defaults['holding_period'],
+                       help=f'持有天数 (default: {defaults["holding_period"]})')
+    parser.add_argument('--position', type=float, default=defaults['position_size'],
+                       help=f'仓位比例 (default: {defaults["position_size"]})')
+    parser.add_argument('--stoploss', type=float, default=defaults['stop_loss'],
+                       help=f'止损线 (default: {defaults["stop_loss"]})')
     parser.add_argument('--reverse', action='store_true',
+                       default=defaults['use_reverse'],
                        help='使用反转因子')
+    parser.add_argument('--save-config', action='store_true',
+                       help='保存当前参数为默认值')
     
     args = parser.parse_args()
+    
+    # 如果指定了 --save-config，保存配置
+    if args.save_config:
+        from config.config_manager import save_backtest_preferences
+        save_backtest_preferences(
+            factor=args.factor,
+            top_n=args.top_n,
+            holding_period=args.holding,
+            position_size=args.position,
+            stop_loss=args.stoploss,
+            use_reverse=args.reverse
+        )
     
     run_backtest(
         factor_name=args.factor,
         top_n=args.top_n,
         holding_period=args.holding,
-        start_date=args.start,
-        end_date=args.end,
+        start_date='20200101',
+        end_date=None,
         position_size=args.position,
         stop_loss=args.stoploss,
         use_reverse=args.reverse
