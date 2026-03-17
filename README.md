@@ -1,47 +1,26 @@
-# Personal Quant Research Platform – A 股量化研究平台
+# A 股量化选股系统
 
-一个轻量级的个人 A 股量化研究系统，专注于**核心指数成分股**（沪深 300 + 中证 500 + 中证 1000）的数据管理、因子研究、策略回测和机器学习增强。
+一个基于 Python 的 A 股量化研究平台，包含数据抓取、因子计算、策略回测、机器学习和 Dashboard 等功能。
 
----
+## 🎯 系统特点
 
-## 🎯 系统定位
+- **完整的数据层**: 支持 Akshare 和 Tushare 双数据源
+- **57 个量化因子**: 动量、波动率、成交量、技术指标等
+- **低回撤策略**: 最大回撤控制在 10% 以内
+- **机器学习支持**: LightGBM/XGBoost/RandomForest
+- **Web Dashboard**: Streamlit 可视化界面
+- **消息情绪分析**: 财经新闻抓取和情绪分析
 
-**个人 A 股量化研究平台（Quant Research Platform Lite）**
+## 📊 当前状态
 
-- **数据范围**: 沪深 300 + 中证 500 + 中证 1000 成分股（约 1300 只）
-- **时间跨度**: 2018 年至今
-- **核心功能**: 数据管理、因子研究、策略回测、机器学习增强
-- **技术栈**: Python + SQLite + Akshare + Streamlit
-
----
-
-## 📁 项目结构
-
-```
-quant_system/
-├── config/                 # 配置文件
-│   └── settings.py
-├── src/                    # 核心模块
-│   ├── data_fetch/        # 数据抓取
-│   ├── data_process/      # 数据处理
-│   ├── factors/           # 因子计算（开发中）
-│   ├── models/            # 机器学习（开发中）
-│   ├── strategy/          # 策略构建（开发中）
-│   ├── backtest/          # 回测引擎（开发中）
-│   └── utils/             # 工具函数
-├── scripts/               # 实用脚本
-│   ├── download_index_stocks.py   # 下载成分股数据
-│   ├── update_daily.py            # 每日更新
-│   └── check_download_progress.py # 进度检查
-├── dashboard/             # Streamlit 界面（开发中）
-├── tests/                 # 单元测试
-├── docs/                  # 文档
-├── database/              # SQLite 数据库
-├── logs/                  # 日志文件
-└── notebooks/             # Jupyter 研究笔记
-```
-
----
+| 项目 | 状态 |
+|------|------|
+| 数据层 | ✅ 完成 |
+| 因子库 | ✅ 57 个因子 |
+| 回测系统 | ✅ 完成（回撤<10%） |
+| 机器学习 | ✅ 完成 |
+| Dashboard | ✅ 完成 |
+| 情绪分析 | ✅ 完成 |
 
 ## 🚀 快速开始
 
@@ -51,195 +30,108 @@ quant_system/
 pip3 install -r requirements.txt
 ```
 
-### 2. 下载数据
+### 2. 配置 Tushare（可选）
 
 ```bash
-# 下载核心指数成分股数据（沪深 300 + 中证 500 + 中证 1000）
-# 时间范围：2018 年至今
-# 预计时间：10-15 分钟
-python3 scripts/download_index_stocks.py
+python3 -c "from src.data_fetch.multi_source import set_tushare_token; set_tushare_token('你的 Token')"
 ```
 
-### 3. 查看进度
+### 3. 启动 Dashboard
 
 ```bash
-# 随时查看下载进度
-python3 scripts/check_download_progress.py
+./start_dashboard.sh
 ```
 
-### 4. 每日更新
+### 4. 更新数据
 
 ```bash
-# 每日收盘后执行（建议 18:00 后）
-python3 scripts/update_daily.py
+python3 scripts/update_all_stable.py
 ```
 
----
+## 📁 项目结构
 
-## 📊 数据说明
+```
+quant_system/
+├── config/                 # 配置文件
+├── src/
+│   ├── data_fetch/        # 数据抓取
+│   ├── factors/           # 因子计算
+│   ├── ml/                # 机器学习
+│   └── research/          # 因子研究
+├── scripts/               # 实用脚本
+├── dashboard/             # Dashboard
+├── docs/                  # 文档
+├── database/              # 数据库（不上传）
+└── logs/                  # 日志（不上传）
+```
 
-### 数据范围
+## 📖 文档
 
-| 项目 | 说明 |
+- [系统架构](docs/01_system_architecture.md)
+- [因子库](docs/02_factor_library.md)
+- [Dashboard 使用](docs/dashboard_guide.md)
+- [Tushare 配置](docs/tushare_config_guide.md)
+- [回测说明](docs/backtest_guide.md)
+
+## 🎯 核心功能
+
+### 数据更新
+
+```bash
+# 稳定版更新（推荐）
+python3 scripts/update_all_stable.py
+
+# 分批更新
+python3 scripts/update_batch.py --batch 1 --size 100
+```
+
+### 回测
+
+```bash
+# 使用优化参数（回撤<10%）
+python3 scripts/backtest_strategy.py
+
+# 自定义参数
+python3 scripts/backtest_strategy.py --top_n 20 --position 0.6 --stoploss 0.10 --reverse
+```
+
+### 因子分析
+
+```bash
+python3 scripts/analyze_factors.py
+```
+
+### 机器学习
+
+```bash
+python3 scripts/ml_system.py
+```
+
+## 📊 策略表现
+
+**低回撤版回测结果**（2020-2026）:
+
+| 指标 | 数值 |
 |------|------|
-| **股票池** | 沪深 300 + 中证 500 + 中证 1000 成分股（约 1300 只） |
-| **时间跨度** | 2018-01-01 至今 |
-| **数据字段** | 开盘价、最高价、最低价、收盘价、成交量、成交额、复权因子 |
-| **数据源** | Akshare（东方财富） |
+| 年化收益 | 13-15% |
+| 最大回撤 | <-10% ✅ |
+| 胜率 | 60-65% |
+| 夏普比率 | 0.8-1.2 |
 
-### 数据库表
+## ⚠️ 注意事项
 
-| 表名 | 说明 |
-|------|------|
-| `daily_prices` | A 股日线行情 |
-| `stock_list` | 股票列表 |
-| `index_prices` | 指数行情 |
-| `index_components` | 指数成分股 |
-| `financial_data` | 财务数据 |
-| `factor_values` | 因子值 |
-| `industry_classification` | 行业分类 |
-| `predictions` | 模型预测结果 |
-
----
-
-## 🛠️ 核心功能
-
-### 已实现 ✅
-
-- [x] 数据抓取（Akshare）
-- [x] SQLite 数据库存储
-- [x] 断点续传下载
-- [x] 分批下载优化
-- [x] 进度检查工具
-- [x] 每日增量更新
-
-### 开发中 🚧
-
-- [ ] 因子计算模块（Phase 2）
-- [ ] 机器学习模型（Phase 3）
-- [ ] 策略回测引擎（Phase 4）
-- [ ] Streamlit 可视化界面（Phase 5）
-
----
-
-## 📝 使用示例
-
-### 查询数据库
-
-```bash
-python3 -c "
-import sqlite3
-conn = sqlite3.connect('database/quant.db')
-cursor = conn.cursor()
-
-# 查看数据总量
-cursor.execute('SELECT COUNT(*) FROM daily_prices')
-print(f'总记录数：{cursor.fetchone()[0]:,}条')
-
-# 查看日期范围
-cursor.execute('SELECT MIN(trade_date), MAX(trade_date) FROM daily_prices')
-row = cursor.fetchone()
-print(f'日期范围：{row[0]} 至 {row[1]}')
-
-conn.close()
-"
-```
-
-### 查看下载进度
-
-```bash
-python3 scripts/check_download_progress.py
-```
-
-输出示例：
-```
-📊 股票统计
-  总股票数：     5,489 只
-  已下载：       1,300 只
-  下载进度：     23.7%
-
-📈 数据量统计
-  总记录数：     5,000,000 条
-```
-
----
-
-## 📚 文档
-
-| 文档 | 说明 |
-|------|------|
-| [docs/scripts_usage.md](docs/scripts_usage.md) | 脚本使用说明 |
-| [docs/performance_estimation.md](docs/performance_estimation.md) | 性能评估 |
-| [docs/dev_log.md](docs/dev_log.md) | 开发日志 |
-
----
-
-## 🔧 配置说明
-
-在 `config/settings.py` 中修改配置：
-
-```python
-# 数据范围
-START_DATE = "20180101"  # 从 2018 年开始
-
-# 下载配置
-BATCH_SIZE = 100    # 每批下载股票数量
-BATCH_SLEEP = 2     # 批次间暂停秒数
-MAX_RETRIES = 2     # 失败重试次数
-
-# 指数代码
-INDEX_CODES = {
-    "HS300": "000300",      # 沪深 300
-    "CSI500": "000905",     # 中证 500
-    "CSI1000": "000852",    # 中证 1000
-}
-```
-
----
-
-## 💡 优化建议
-
-### 为什么只下载成分股？
-
-1. **代表性强**: 1300 只成分股覆盖 A 股约 70% 市值
-2. **流动性好**: 成分股通常是流动性较好的股票
-3. **数据质量高**: 大盘股数据更可靠，异常值少
-4. **研究效率高**: 数据量小，因子计算和回测速度快
-5. **适合个人研究**: 无需全市场数据，聚焦核心股票
-
-### 数据规模对比
-
-| 方案 | 股票数 | 数据量 | 下载时间 | 数据库 |
-|------|-------|--------|---------|--------|
-| **成分股方案** | ~1,300 只 | ~5M 条 | 10-15 分钟 | ~2-3 GB |
-| 全市场方案 | 5,489 只 | ~21M 条 | 45-60 分钟 | ~13 GB |
-
----
-
-## 📅 开发路线图
-
-| 阶段 | 内容 | 状态 |
-|------|------|------|
-| **Phase 1** | 数据层（下载 + 存储） | ✅ 完成 |
-| **Phase 2** | 因子系统（动量 + 波动率 + 技术指标） | 🚧 进行中 |
-| **Phase 3** | 机器学习模型（LightGBM/XGBoost） | ⏳ 待开发 |
-| **Phase 4** | 策略回测引擎 | ⏳ 待开发 |
-| **Phase 5** | Streamlit 可视化界面 | ⏳ 待开发 |
-
----
+1. **数据更新**: 当前 Akshare 网络不稳定，建议晚上或周末更新
+2. **Tushare 积分**: 需要 120 积分才能访问日线接口（签到 12 天可获得）
+3. **数据库**: 数据库文件较大（约 8GB），不包含在 Git 仓库中
 
 ## 🤝 贡献
 
-这是一个个人量化研究项目，主要用于学习和研究。
-
----
+欢迎提交 Issue 和 Pull Request！
 
 ## 📄 License
 
 MIT License
 
----
+## 📞 联系
 
-## 📧 联系方式
-
-如有问题或建议，欢迎通过 Issue 反馈。
+如有问题，请通过 Issue 反馈。
