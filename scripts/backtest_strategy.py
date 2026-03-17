@@ -96,93 +96,76 @@ def backtest_momentum_strategy(
     rebalance_freq: str = 'M'
 ) -> pd.DataFrame:
     """
-    回测动量策略
+    回测动量策略（简化版）
     
     Args:
-        price_df: 价格数据（包含多个股票）
+        price_df: 价格数据
         top_n: 选股数量
         holding_period: 持有期（交易日）
-        rebalance_freq: 调仓频率 ('W'=周，'M'=月)
+        rebalance_freq: 调仓频率
     
     Returns:
         回测结果
     """
-    # 计算动量因子
     price_df = price_df.copy()
+    price_df['trade_date'] = pd.to_datetime(price_df['trade_date'])
     price_df = price_df.sort_values(['ts_code', 'trade_date'])
     
-    # 计算 20 日动量
-    price_df['momentum_20'] = price_df.groupby('ts_code')['close'].pct_change(20)
+    # 计算动量因子
+    price_df['momentum'] = price_df.groupby('ts_code')['close'].pct_change(holding_period)
     
-    # 获取调仓日期
-    if rebalance_freq == 'W':
-        rebalance_dates = price_df['trade_date'].drop_duplicates()
-        rebalance_dates = rebalance_dates[rebalance_dates.dt.dayofweek == 4]  # 周五
-    else:  # Monthly
-        rebalance_dates = price_df['trade_date'].drop_duplicates()
-        rebalance_dates = rebalance_dates[rebalance_dates.dt.day == rebalance_dates.dt.day.max()]
+    # 获取每月最后一个交易日
+    price_df['month'] = price_df['trade_date'].dt.to_period('M')
+    month_end_dates = price_df.groupby('month')['trade_date'].max().reset_index()
+    month_end_dates = month_end_dates['trade_date'].tolist()
     
-    rebalance_dates = sorted(rebalance_dates.tolist())
+    # 回测
+    results = []
     
-    # 回测循环
-    portfolio_values = []
-    rebalance_results = []
-    
-    cash = 1000000  # 初始资金 100 万
-    positions = {}  # {ts_code: shares}
-    
-    for i, rebalance_date in enumerate(rebalance_dates[:-holding_period]):
-        # 获取选股日的因子值
-        selection_date = rebalance_date
-        next_rebalance = rebalance_dates[i + holding_period // 20] if i + holding_period // 20 < len(rebalance_dates) else None
+    for i in range(len(month_end_dates) - holding_period):
+        selection_date = month_end_dates[i]
+        hold_end_date = month_end_dates[min(i + holding_period // 20, len(month_end_dates) - 1)]
         
-        if next_rebalance is None:
-            break
+        # 获取选股日数据
+        day_data = price_df[
+            (price_df['trade_date'] == selection_date) & 
+            (price_df['momentum'].notna())
+        ]
         
-        # 获取当日所有股票的动量值
-        day_data = price_df[price_df['trade_date'] == selection_date].copy()
-        
-        if len(day_data) < top_n * 2:
+        if len(day_data) < top_n:
             continue
         
-        # 选择动量最高的股票
-        day_data = day_data.dropna(subset=['momentum_20'])
-        top_stocks = day_data.nlargest(top_n, 'momentum_20')['ts_code'].tolist()
+        # 选股（动量最高的 top_n）
+        top_stocks = day_data.nlargest(top_n, 'momentum')['ts_code'].tolist()
         
-        if len(top_stocks) < top_n:
-            continue
-        
-        # 计算调仓日期的收益
-        hold_start = selection_date
-        hold_end = next_rebalance
-        
-        # 获取持有期收益
-        start_prices = price_df[
-            (price_df['trade_date'] == hold_start) & 
+        # 获取买入价
+        buy_prices = price_df[
+            (price_df['trade_date'] == selection_date) &
             (price_df['ts_code'].isin(top_stocks))
         ].set_index('ts_code')['close']
         
-        end_prices = price_df[
-            (price_df['trade_date'] >= hold_start) & 
-            (price_df['trade_date'] <= hold_end) &
+        # 获取卖出价
+        sell_prices = price_df[
+            (price_df['trade_date'] == hold_end_date) &
             (price_df['ts_code'].isin(top_stocks))
-        ].groupby('ts_code').last()['close']
+        ].set_index('ts_code')['close']
         
         # 计算收益
-        common = start_prices.index.intersection(end_prices.index)
+        common = buy_prices.index.intersection(sell_prices.index)
         if len(common) < top_n // 2:
             continue
         
-        period_return = (end_prices.loc[common] / start_prices.loc[common] - 1).mean()
+        returns = (sell_prices.loc[common] / buy_prices.loc[common] - 1)
+        period_return = returns.mean()
         
-        rebalance_results.append({
-            'rebalance_date': rebalance_date,
-            'hold_end': next_rebalance,
+        results.append({
+            'rebalance_date': selection_date,
+            'hold_end': hold_end_date,
             'period_return': period_return,
             'n_stocks': len(common)
         })
     
-    return pd.DataFrame(rebalance_results)
+    return pd.DataFrame(results)
 
 
 def calculate_performance_metrics(returns: pd.Series) -> dict:
@@ -195,20 +178,27 @@ def calculate_performance_metrics(returns: pd.Series) -> dict:
     Returns:
         绩效指标字典
     """
-    if len(returns) < 10:
+    if len(returns) < 3 or returns.isna().all():
         return {}
     
-    # 年化收益
+    returns = returns.dropna()
+    
+    if len(returns) < 3:
+        return {}
+    
+    # 总收益
     total_return = (1 + returns).prod() - 1
-    years = len(returns) / 252
+    
+    # 年化收益
+    years = len(returns) / 12  # 月度收益
     ann_return = (1 + total_return) ** (1 / years) - 1 if years > 0 else 0
     
     # 年化波动率
-    ann_vol = returns.std() * np.sqrt(252)
+    ann_vol = returns.std() * np.sqrt(12)
     
     # 夏普比率（假设无风险利率 3%）
     rf = 0.03
-    sharpe = (ann_return - rf) / ann_vol if ann_vol > 0 else 0
+    sharpe = (ann_return - rf) / ann_vol if ann_vol > 1e-10 else 0
     
     # 最大回撤
     cumulative = (1 + returns).cumprod()
